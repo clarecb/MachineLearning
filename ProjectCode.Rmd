@@ -1,0 +1,124 @@
+---
+title: "Practical Machine Learning Course Project"
+output: 
+  html_document: 
+    keep_md: yes
+---
+
+#Overview
+
+This project uses data from personal activity measuring devices to predict which of 5 ways an individual performed a particular exercise (barbell lift). Two machine learning algorithms were used to create a predictive model. The random forest model was found most accurate.
+
+#Setting options for the analysis
+
+Packages were loaded that were used throughout this project, and the **`options`** function was used to turn off scientific notation. Also, the working directory and the seed were set.
+
+```{r, echo=TRUE, results = 'hide', warning=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=50)}
+library(downloader)
+library(knitr)
+library(rmarkdown)
+library(caret)
+library(randomForest)
+options(scipen = 999)
+setwd("~/GoogleDrive/R/MachineLearning")
+set.seed(500)
+```
+
+
+#Downloading the data and exploratory analysis
+
+The data files were downloaded to the working directory and then loaded into R.
+
+```{r, echo=TRUE, warning=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=50)}
+if (!file.exists("training.csv")) {
+    fileurl = "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+    download(fileurl, "training.csv", mode = "wb")
+}
+
+if (!file.exists("testing.csv")) {
+    fileurl2 = "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+    download(fileurl2, "testing.csv", mode = "wb")
+}
+
+
+training = read.csv("training.csv", na.strings=c("NA","#DIV/0!", ""))
+testing = read.csv("testing.csv", na.strings=c("NA","#DIV/0!", ""))
+```
+
+A table was created to get an understanding of how many observations were in each **`classe`** of exercise type. Also, the **`str`** function was used to get an understanding of the structure of the variables in the datasets (the results of this function are hidden form this document because of its length).
+
+```{r, echo=TRUE, results = 'hide', warning=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=50)}
+str(training)
+```
+
+```{r, echo=TRUE, warning=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=50)}
+table(training$classe)
+```
+
+The first 7 rows, which were not needed for the analysis, were removed. Also, some columns have a high percentage of missing values. Rows with more than 50% **`NA`** values were removed from the training dataset.
+
+```{r, echo=TRUE, warning=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=55)}
+trainingID = training[,8:length(colnames(training))]
+trainingNA = trainingID[,!colSums(is.na(trainingID)) >= (.50*nrow(trainingID))]
+```
+
+#Creating the models
+
+A subset of the training dataset was created for cross validation. The training dataset was subset into 60% to create the model and 40% to test the prediction model.
+
+```{r, echo=TRUE, warning=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=50)}
+inTrain = createDataPartition(y=training$classe, p = .60, list=FALSE)
+trainingsubset = trainingNA[inTrain,]
+trainingtest = trainingNA[-inTrain,]
+trainingsubset = as.data.frame(trainingsubset)
+```
+
+Based on my understanding of types of machine learning regression models, a random forest alogrithm and a logit boosting algorithm were both used to create a predictive model with this data. Both models incorporated preprocessing using Principal Component Analysis, and each was cross-validated against the 40% testing subset (**`trainingtest`**) of the original training dataset.
+
+```{r, echo=TRUE, results = 'hide', warning=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=50)}
+fitRF = randomForest(classe ~ ., data = trainingsubset, method = "class", preProcOptions = "pca")
+fitLB = train(classe ~ ., data = trainingsubset, method = "LogitBoost", preProcess = "pca")
+```
+
+#Model predicitons and cross-validation
+
+```{r, echo=TRUE, warning=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=50)}
+predictRF = predict(fitRF, trainingtest, type = "class")
+CMRF = confusionMatrix(predictRF, trainingtest$classe)
+CMRF
+```
+
+The random forest method created a model with **`r ((CMRF$overall[[1]])*100)`** percent accuracy.
+
+```{r, echo=TRUE, warning=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=50)}
+predictLB = predict(fitLB, trainingtest)
+CMLB = confusionMatrix(predictLB, trainingtest$classe)
+CMLB
+```
+
+The logit boosting method created a model with **`r ((CMLB$overall[[1]])*100)`** percent accuracy. 
+
+#Out-of sample error
+
+By subtracting this accuracy from the value of **`100`** , the out-of-sample percent error can be estimated. For the random forest method, the out-of-sample error can be estimated to be **`r ((1-(CMRF$overall[[1]]))*100)`** percent. The out-of-sample error for the logit boosting method can be estimated to be **`r ((1-(CMLB$overall[[1]]))*100)`** percent. From this analysis, the random forest method is the most accurate. 
+
+#Conclusions
+
+Since the random forest model has **`r (CMRF$overall[[1]])*100`** percent accuracy, it can be used to accurately predict the type of class of barbell exercise an individual performed.
+
+
+#Code for problem online submission
+
+```{r, echo=TRUE, warning=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=50)}
+testinganswers = predict(fitRF, testing, type = "class")
+
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(testinganswers)
+```
